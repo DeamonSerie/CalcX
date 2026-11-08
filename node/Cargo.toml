@@ -1,0 +1,38 @@
+[package]
+name = "calcx-node"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "calcx-node"
+path = "src/main.rs"
+
+[dependencies]
+calcx-runtime = { path = "../runtime", default-features = false }
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+jsonrpsee = { version = "0.24", features = ["server"] }
+sc-client-api = "48"
+sc-consensus = "0.59"
+sc-consensus-aura = "0.60"
+sc-consensus-grandpa = "0.45"
+sc-executor = "0.51"
+sc-network = "0.60"
+sc-rpc-api = "0.60"
+sc-service = "0.62"
+sc-telemetry = "34"
+sc-transaction-pool = "48"
+sc-transaction-pool-api = "47"
+serde_json = "1"
+sp-api = "44"
+sp-block-builder = "44"
+sp-blockchain = "47"
+sp-consensus-aura = "0.50"
+sp-consensus-grandpa = "31"
+sp-core = "43"
+sp-inherents = "44"
+sp-io = "49"
+sp-keyring = "43"
+sp-runtime = "49"
+sp-timestamp = "44"

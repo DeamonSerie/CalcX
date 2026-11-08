@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "pallets/pallet-calcx",
+    "pallets/pallet-time-n",
+    "pallets/pallet-node-rewards",
+    "runtime",
+    "node",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+authors = ["calcX"]
+
+[workspace.dependencies]
+codec = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive", "max-encoded-len"] }
+scale-info = { version = "2", default-features = false }
+frame-support = { version = "49.0.1", default-features = false }
+frame-system = { version = "49.0.0", default-features = false }
+frame-executive = { version = "49.0.0", default-features = false }
+sp-core = { version = "43.0.0", default-features = false }
+sp-runtime = { version = "49.0.0", default-features = false }
+sp-io = { version = "49.0.0", default-features = false }
+sp-std = { version = "14.0.0", default-features = false }
+sp-api = { version = "44.0.0", default-features = false }
+sp-block-builder = { version = "44.0.0", default-features = false }
+sp-consensus-aura = { version = "0.50.0", default-features = false }
+sp-consensus-grandpa = { version = "31.0.0", default-features = false }
+sp-genesis-builder = { version = "0.25.0", default-features = false }
+sp-inherents = { version = "44.0.0", default-features = false }
+sp-offchain = { version = "44.0.0", default-features = false }
+sp-session = { version = "46.0.0", default-features = false }
+sp-transaction-pool = { version = "44.0.0", default-features = false }
+sp-version = { version = "47.0.0", default-features = false }
+sp-weights = { version = "37.0.0", default-features = false }
+sp-storage = { version = "25.0.0", default-features = false }
+sp-keyring = { version = "43.0.0", default-features = false }
+pallet-balances = { version = "51.0.2", default-features = false }
+pallet-timestamp = { version = "49.0.0", default-features = false }
+pallet-aura = { version = "49.0.0", default-features = false }
+pallet-grandpa = { version = "50.0.0", default-features = false }
+pallet-assets = { version = "54.0.1", default-features = false }
+pallet-contracts = { version = "51.0.0", default-features = false }
+pallet-collective = { version = "50.0.0", default-features = false }
+pallet-sudo = { version = "50.0.0", default-features = false }
+pallet-transaction-payment = { version = "50.0.0", default-features = false }
