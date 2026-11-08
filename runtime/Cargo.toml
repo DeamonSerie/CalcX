@@ -32,6 +32,7 @@ pallet-grandpa = { workspace = true }
 pallet-assets = { workspace = true }
 pallet-contracts = { workspace = true }
 pallet-collective = { workspace = true }
+pallet-treasury = { workspace = true }
 pallet-sudo = { workspace = true }
 pallet-transaction-payment = { workspace = true }
 pallet-calcx = { path = "../pallets/pallet-calcx", default-features = false }
@@ -68,6 +69,7 @@ std = [
   "pallet-assets/std",
   "pallet-contracts/std",
   "pallet-collective/std",
+  "pallet-treasury/std",
   "pallet-sudo/std",
   "pallet-transaction-payment/std",
   "pallet-calcx/std",

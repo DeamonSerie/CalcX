@@ -43,5 +43,6 @@ pallet-grandpa = { version = "50.0.0", default-features = false }
 pallet-assets = { version = "54.0.1", default-features = false }
 pallet-contracts = { version = "51.0.0", default-features = false }
 pallet-collective = { version = "50.0.0", default-features = false }
+pallet-treasury = { version = "49.0.0", default-features = false }
 pallet-sudo = { version = "50.0.0", default-features = false }
 pallet-transaction-payment = { version = "50.0.0", default-features = false }

@@ -20,6 +20,19 @@ pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::Account
 pub type Balance = u128;
 pub type Nonce = u32;
 pub type Hash = sp_core::H256;
+
+pub struct TreasuryPot;
+impl frame_support::traits::Get<AccountId> for TreasuryPot {
+    fn get() -> AccountId {
+        pallet_treasury::Pallet::<Runtime>::account_id()
+    }
+}
+impl sp_core::TypedGet for TreasuryPot {
+    type Type = AccountId;
+    fn get() -> Self::Type {
+        pallet_treasury::Pallet::<Runtime>::account_id()
+    }
+}
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
 
 impl_opaque_keys! {
@@ -39,6 +52,7 @@ construct_runtime!(
         Aura: pallet_aura,
         Grandpa: pallet_grandpa,
         Balances: pallet_balances,
+        Treasury: pallet_treasury,
         Assets: pallet_assets,
         Sudo: pallet_sudo,
         TransactionPayment: pallet_transaction_payment,
@@ -129,6 +143,36 @@ impl pallet_balances::Config for Runtime {
     type DoneSlashHandler = ();
 }
 
+
+parameter_types! {
+    pub const TreasuryPalletId: frame_support::PalletId = frame_support::PalletId(*b"py/trsry");
+    pub const TreasurySpendPeriod: u32 = 100;
+    pub const TreasuryBurn: sp_runtime::Permill = sp_runtime::Permill::from_percent(0);
+    pub const TreasuryMaxApprovals: u32 = 100;
+    pub const TreasuryPayoutPeriod: u32 = 100;
+}
+
+impl pallet_treasury::Config for Runtime {
+    type Currency = Balances;
+    type RejectOrigin = frame_system::EnsureRoot<AccountId>;
+    type RuntimeEvent = RuntimeEvent;
+    type SpendPeriod = TreasurySpendPeriod;
+    type Burn = TreasuryBurn;
+    type PalletId = TreasuryPalletId;
+    type BurnDestination = ();
+    type WeightInfo = ();
+    type SpendFunds = ();
+    type MaxApprovals = TreasuryMaxApprovals;
+    type SpendOrigin = frame_system::EnsureRootWithSuccess<AccountId, frame_support::traits::ConstU128<{u128::MAX}>>;
+    type AssetKind = ();
+    type Beneficiary = AccountId;
+    type BeneficiaryLookup = sp_runtime::traits::IdentityLookup<AccountId>;
+    type Paymaster = frame_support::traits::tokens::PayFromAccount<pallet_balances::Pallet<Runtime>, TreasuryPot>;
+    type BalanceConverter = frame_support::traits::tokens::UnityAssetBalanceConversion;
+    type PayoutPeriod = TreasuryPayoutPeriod;
+    type BlockNumberProvider = System;
+}
+
 parameter_types! {
     pub const MinimumPeriod: u64 = 5;
 }
@@ -210,6 +254,10 @@ impl pallet_calcx::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type AssetId = u32;
     type MinWindow = CalcxMinWindow;
+    type Currency = Balances;
+    type TreasuryAccount = TreasuryPot;
+    type PriceToCxScale = ConstU128<1000>;
+    type PriceProvider = pallet_calcx::StoragePriceProvider<Runtime>;
 }
 
 impl pallet_time_n::Config for Runtime {

@@ -1,16 +1,24 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
+pub use pallet::PriceProvider;
 
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
     use frame_support::pallet_prelude::*;
+    use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
     use sp_runtime::{FixedU128, FixedPointNumber, Saturating};
     use sp_std::vec::Vec;
 
     pub type Price = FixedU128;
+
+    pub trait PriceProvider<AssetId, Price> {
+        fn current_price(asset: &AssetId) -> Option<Price>;
+    }
+
+    pub struct StoragePriceProvider<T>(core::marker::PhantomData<T>);
 
     #[derive(Clone, Debug, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, TypeInfo, MaxEncodedLen)]
     #[scale_info(skip_type_params(T))]
@@ -41,6 +49,10 @@ pub mod pallet {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type AssetId: Parameter + Member + Copy + MaybeSerializeDeserialize + MaxEncodedLen;
         type MinWindow: Get<Price>;
+        type Currency: frame_support::traits::Currency<Self::AccountId, Balance = u128>;
+        type TreasuryAccount: Get<Self::AccountId>;
+        type PriceToCxScale: Get<u128>;
+        type PriceProvider: PriceProvider<Self::AssetId, Price>;
     }
 
     #[pallet::pallet]
@@ -67,6 +79,9 @@ pub mod pallet {
     #[pallet::storage]
     pub type RegisteredAssets<T: Config> = StorageMap<_, Blake2_128Concat, T::AssetId, ()>;
 
+    #[pallet::storage]
+    pub type AssetCurrentPrice<T: Config> = StorageMap<_, Blake2_128Concat, T::AssetId, Price>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -78,6 +93,7 @@ pub mod pallet {
         MaintainerAdded { who: T::AccountId },
         MaintainerRemoved { who: T::AccountId },
         WindowVerified { id: u64 },
+        ExcessToTreasury { who: T::AccountId, asset: T::AssetId, window: u64, excess: u128, allowed: u128, applied: u128 },
     }
 
     #[pallet::error]
@@ -90,6 +106,8 @@ pub mod pallet {
         WindowNotFound,
         AlreadyRegistered,
         InvalidBounds,
+        MissingAssetPrice,
+        InsufficientBalance,
     }
 
     impl<T: Config> Pallet<T> {
@@ -114,6 +132,12 @@ pub mod pallet {
         }
     }
 
+    impl<T: Config> PriceProvider<T::AssetId, Price> for StoragePriceProvider<T> {
+        fn current_price(asset: &T::AssetId) -> Option<Price> {
+            AssetCurrentPrice::<T>::get(asset)
+        }
+    }
+
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         #[pallet::weight(10_000)]
@@ -122,7 +146,6 @@ pub mod pallet {
             asset: T::AssetId,
             schedule: TradeSchedule,
         ) -> DispatchResult {
-            // root or maintainer
             Self::ensure_auth(origin.clone())?;
             let _ = origin;
             if !Self::has_fraction(schedule.min_window) {
@@ -146,10 +169,22 @@ pub mod pallet {
             if !Self::has_fraction(schedule.min_window) {
                 return Err(Error::<T>::NonDecimalNotAllowed.into());
             }
-            let lo = Price::from_rational(5001u128, 1000u128);
-            let hi = Price::from_rational(5002u128, 1000u128);
-            if !Self::has_fraction(lo) || !Self::has_fraction(hi) {
-                return Err(Error::<T>::NonDecimalNotAllowed.into());
+            let price = T::PriceProvider::current_price(&asset).ok_or(Error::<T>::MissingAssetPrice)?;
+            let bps = schedule.base_tick_bps;
+            let mut delta = price.saturating_mul(Price::from_rational(bps as u128, 10000u128));
+            if delta == Price::from_inner(0) {
+                delta = Price::from_rational(1u128, 1000u128);
+            }
+            let mut lo = price.saturating_sub(delta);
+            let mut hi = price.saturating_add(delta);
+            if !Self::has_fraction(lo) {
+                lo = lo.saturating_add(Price::from_rational(1u128, 1000u128));
+            }
+            if !Self::has_fraction(hi) {
+                hi = hi.saturating_add(Price::from_rational(1u128, 1000u128));
+            }
+            if lo >= hi {
+                return Err(Error::<T>::InvalidBounds.into());
             }
             let now = <frame_system::Pallet<T>>::block_number();
             let closes = now + schedule.window_blocks.into();
@@ -175,23 +210,71 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000)]
+        pub fn set_asset_price(
+            origin: OriginFor<T>,
+            asset: T::AssetId,
+            price: Price,
+        ) -> DispatchResult {
+            Self::ensure_auth(origin.clone())?;
+            let _ = origin;
+            if price == Price::from_inner(0) {
+                return Err(Error::<T>::NonDecimalNotAllowed.into());
+            }
+            if !Self::has_fraction(price) {
+                return Err(Error::<T>::NonDecimalNotAllowed.into());
+            }
+            AssetCurrentPrice::<T>::insert(asset, price);
+            Ok(())
+        }
+
+        #[pallet::weight(10_000)]
         pub fn trade(
             origin: OriginFor<T>,
             asset: T::AssetId,
             amount: u128,
         ) -> DispatchResult {
-            let _who = ensure_signed(origin)?;
+            let who = ensure_signed(origin)?;
             let id = ActiveWindow::<T>::get(asset).ok_or(Error::<T>::NoActiveWindow)?;
             let mut window = Windows::<T>::get(id).ok_or(Error::<T>::WindowNotFound)?;
             let now = <frame_system::Pallet<T>>::block_number();
             if now < window.opened_at || now > window.closes_at {
                 return Err(Error::<T>::OutsideWindow.into());
             }
-            // enforce decimal on bounds (already)
             if !Self::has_fraction(window.price_lo_y) || !Self::has_fraction(window.price_hi_y)
                 || !Self::has_fraction(window.price_lo_x) || !Self::has_fraction(window.price_hi_x) {
                 return Err(Error::<T>::NonDecimalNotAllowed.into());
             }
+
+            let band_width = window.price_hi_y.saturating_sub(window.price_lo_y);
+            let scale = T::PriceToCxScale::get();
+            let mut allowed_cx = band_width.into_inner().saturating_mul(scale) / Price::DIV;
+            if allowed_cx == 0 {
+                allowed_cx = 1;
+            }
+
+            if amount > allowed_cx {
+                let excess = amount - allowed_cx;
+                let applied = allowed_cx;
+                T::Currency::transfer(
+                    &who,
+                    &T::TreasuryAccount::get(),
+                    excess,
+                    frame_support::traits::ExistenceRequirement::KeepAlive,
+                )
+                .map_err(|_| Error::<T>::InsufficientBalance)?;
+                window.trade_magnitude = Saturating::saturating_add(window.trade_magnitude, Price::from_rational(1u128, 1000u128));
+                Windows::<T>::insert(id, window.clone());
+                Self::deposit_event(Event::ExcessToTreasury {
+                    who,
+                    asset,
+                    window: id,
+                    excess,
+                    allowed: allowed_cx,
+                    applied,
+                });
+                return Ok(());
+            }
+
             window.trade_magnitude = Saturating::saturating_add(window.trade_magnitude, Price::from_rational(1u128, 1000u128));
             let _ = amount;
             Windows::<T>::insert(id, window.clone());
@@ -210,7 +293,6 @@ pub mod pallet {
             let mut window = Windows::<T>::get(id).ok_or(Error::<T>::WindowNotFound)?;
             window.verified = false;
             Windows::<T>::insert(id, window);
-            // compute next size (advisory) - placeholder
             let _ = TradeSchedules::<T>::get(asset);
             Self::deposit_event(Event::WindowClosed { id });
             Ok(())
@@ -221,7 +303,6 @@ pub mod pallet {
             origin: OriginFor<T>,
             asset: T::AssetId,
         ) -> DispatchResult {
-            // allow root/maintainer; signed users? We'll allow root/maintainer only.
             Self::ensure_auth(origin.clone())?;
             let _ = origin;
             if RegisteredAssets::<T>::contains_key(asset) {
